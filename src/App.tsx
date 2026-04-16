@@ -107,7 +107,7 @@ export default function App() {
       // Add lowpass filter for deep rumble effect (airplane-like)
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass';
-      filter.frequency.value = 200; // Cut off higher frequencies, keep deep rumble
+      filter.frequency.value = 180; // Cut off higher frequencies, keep deep rumble
       filter.Q.value = 0.7;
 
       noise.connect(filter);
