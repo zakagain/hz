@@ -429,7 +429,7 @@ export default function App() {
       </p>
       
       <p className={`mt-4 text-xs text-center ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'}`}>
-        © 2025 zakdev12312 · MIT License
+        © 2025 zakagain · MIT License
       </p>
 
       {showAbout && (
