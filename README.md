@@ -9,9 +9,6 @@ A simple, no-nonsense web app for restorative audio therapy
 > This app is currently in development and may not work as expected.
 > If you find any issues, please report them in the issues section.
 
-> [!TIP]
-> Yes, this is the repo from zakdev12312, it's been migrated over from there.
-
 
 ## What it does
 
@@ -34,7 +31,7 @@ Option 1: Download ZIP
 
 Option 2: Git Clone
 ```bash
-git clone https://github.com/zakdev12312/hz.git
+git clone https://github.com/zakagain/hz.git
 cd hz
 npm install
 npm run dev
@@ -44,5 +41,5 @@ Then open `http://localhost:5173/hz` in your browser.
 
 ---
 
-© 2025 zakdev12312. Licensed under the MIT license.
+© 2025 zakagain. Licensed under the MIT license. Previously zakdev12312.
 
