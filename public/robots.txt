@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://zakagain.github.io/hz/sitemap.xml
+Sitemap: https://zakdev12312.github.io/hz/sitemap.xml

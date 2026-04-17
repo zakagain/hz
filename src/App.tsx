@@ -37,31 +37,31 @@ export default function App() {
     return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || 'ontouchstart' in window;
   };
 
-  const initAudio = () => {
+  const initAudio = async (): Promise<boolean> => {
     if (!audioContextRef.current) {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       audioContextRef.current = new AudioContextClass();
     }
-    
+
     const ctx = audioContextRef.current;
     if (ctx.state === 'suspended') {
-      ctx.resume();
+      await ctx.resume();
     }
-    
+
     return ctx.state === 'running';
   };
 
-  const unlockAudio = () => {
+  const unlockAudio = async () => {
     if (!audioContextRef.current) {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       audioContextRef.current = new AudioContextClass();
     }
-    
+
     const ctx = audioContextRef.current;
     if (ctx.state === 'suspended') {
-      ctx.resume();
+      await ctx.resume();
     }
-    
+
     // Play silent buffer to unlock iOS audio
     const buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
     const source = ctx.createBufferSource();
@@ -84,10 +84,13 @@ export default function App() {
     return buffer;
   };
 
-  const startTone = () => {
-    initAudio();
+  const startTone = async () => {
+    const running = await initAudio();
     const ctx = audioContextRef.current;
-    if (!ctx) return;
+    if (!ctx || !running) {
+      console.warn('AudioContext did not reach running state');
+      return;
+    }
 
     if (oscillatorRef.current || noiseNodeRef.current) {
       stopTone();
@@ -251,7 +254,7 @@ export default function App() {
     if (!isMobile()) return;
     
     const handleFirstInteraction = () => {
-      unlockAudio();
+      void unlockAudio();
       // Remove listeners after first interaction
       document.removeEventListener('touchstart', handleFirstInteraction);
       document.removeEventListener('click', handleFirstInteraction);
@@ -403,7 +406,7 @@ export default function App() {
           )}
 
           <Button 
-            onClick={isPlaying ? stopTone : startTone}
+            onClick={() => (isPlaying ? stopTone() : void startTone())}
             size="lg"
             className={`w-full py-8 text-xl font-medium rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl ${isPlaying ? theme === 'dark' ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-zinc-600 text-zinc-100 hover:bg-zinc-700' : theme === 'dark' ? 'bg-zinc-100 text-zinc-950 hover:bg-white hover:scale-[1.02]' : 'bg-zinc-900 text-zinc-100 hover:bg-black hover:scale-[1.02]'}`}
           >
@@ -426,7 +429,7 @@ export default function App() {
       </p>
       
       <p className={`mt-4 text-xs text-center ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'}`}>
-        © 2025 zakagain · MIT License
+        © 2025 zakdev12312 · MIT License
       </p>
 
       {showAbout && (

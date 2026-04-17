@@ -3,7 +3,7 @@
 A simple, no-nonsense web app for restorative audio therapy
 
 >[!IMPORTANT]
-> iOS currently has no working audio. Android status is currently unknown. Please drop anything in a discussion or issue. I'll be working on it.
+> iOS audio fixed 🎊 (thanks Cursor)
 
 > [!NOTE]
 > This app is currently in development and may not work as expected.
@@ -31,7 +31,7 @@ Option 1: Download ZIP
 
 Option 2: Git Clone
 ```bash
-git clone https://github.com/zakagain/hz.git
+git clone https://github.com/zakdev12312/hz.git
 cd hz
 npm install
 npm run dev
@@ -41,5 +41,5 @@ Then open `http://localhost:5173/hz` in your browser.
 
 ---
 
-© 2025 zakagain. Licensed under the MIT license. Previously zakdev12312.
+© 2025 zakdev12312. Licensed under the MIT license.
 
