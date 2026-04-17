@@ -31,7 +31,7 @@ Option 1: Download ZIP
 
 Option 2: Git Clone
 ```bash
-git clone https://github.com/zakdev12312/hz.git
+git clone https://github.com/zakagain/hz.git
 cd hz
 npm install
 npm run dev
@@ -41,5 +41,5 @@ Then open `http://localhost:5173/hz` in your browser.
 
 ---
 
-© 2025 zakdev12312. Licensed under the MIT license.
+© 2025 zakagain. Licensed under the MIT license.
 
