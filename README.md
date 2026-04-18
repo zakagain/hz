@@ -3,7 +3,7 @@
 A simple, no-nonsense web app for restorative audio therapy
 
 >[!IMPORTANT]
-> iOS audio fixed 🎊 (thanks Cursor)
+> iOS audio fixed 🎉 (thanks Cursor)
 
 > [!NOTE]
 > This app is currently in development and may not work as expected.
