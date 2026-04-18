@@ -4,10 +4,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Slider } from '@/components/ui/slider';
 import { Play, Square, RotateCcw, Sun, Moon, Info, X } from 'lucide-react';
 
+const detectMobile = () => {
+  if (typeof window === 'undefined') return false;
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || 'ontouchstart' in window;
+};
+
+type NavigatorWithAudioSession = Navigator & {
+  audioSession?: {
+    type: 'auto' | 'ambient' | 'playback' | 'play-and-record';
+  };
+};
+
 export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [timeLeft, setTimeLeft] = useState(30);
-  const [frequency, setFrequency] = useState(50);
+  const [frequency, setFrequency] = useState(() => (detectMobile() ? 85 : 50));
   const [timerDuration, setTimerDuration] = useState(30);
   const [mode, setMode] = useState<'restorative' | 'brown'>('brown');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -18,6 +29,8 @@ export default function App() {
   });
   const [isSpinning, setIsSpinning] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const [showSilentModeHint, setShowSilentModeHint] = useState(false);
 
   const timerPresets = [
     { label: '30s', value: 30 },
@@ -32,42 +45,83 @@ export default function App() {
   const noiseNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const timerRef = useRef<number | null>(null);
   const konamiSequence = useRef<string[]>([]);
+  const hasUnlockedAudioRef = useRef(false);
 
   const isMobile = () => {
-    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || 'ontouchstart' in window;
+    return detectMobile();
   };
 
-  const initAudio = async (): Promise<boolean> => {
+  const getOrCreateAudioContext = () => {
     if (!audioContextRef.current) {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       audioContextRef.current = new AudioContextClass();
     }
 
-    const ctx = audioContextRef.current;
-    if (ctx.state === 'suspended') {
-      await ctx.resume();
+    return audioContextRef.current;
+  };
+
+  const runUnlockPulse = (ctx: AudioContext): boolean => {
+    try {
+      const unlockGain = ctx.createGain();
+      unlockGain.gain.value = 0;
+      const source = ctx.createBufferSource();
+      source.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+      source.connect(unlockGain);
+      unlockGain.connect(ctx.destination);
+      source.start(0);
+      source.stop(ctx.currentTime + 0.001);
+      source.onended = () => {
+        source.disconnect();
+        unlockGain.disconnect();
+      };
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const resumeContext = async (ctx: AudioContext) => {
+    if (ctx.state !== 'running') {
+      try {
+        await ctx.resume();
+      } catch {
+        // Some mobile browsers can throw when resuming from background state.
+      }
+    }
+
+    if (ctx.state !== 'running') {
+      await new Promise((resolve) => window.setTimeout(resolve, 30));
+      try {
+        await ctx.resume();
+      } catch {
+        // Ignore and let caller handle state failure.
+      }
+    }
+  };
+
+  const configurePlaybackAudioSession = (): boolean => {
+    const nav = navigator as NavigatorWithAudioSession;
+    if (!nav.audioSession) return false;
+
+    try {
+      nav.audioSession.type = 'playback';
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const ensureAudioReady = async (fromUserGesture: boolean): Promise<boolean> => {
+    const ctx = getOrCreateAudioContext();
+    await resumeContext(ctx);
+
+    if (fromUserGesture && (ctx.state !== 'running' || !hasUnlockedAudioRef.current)) {
+      const pulseStarted = runUnlockPulse(ctx);
+      await resumeContext(ctx);
+      hasUnlockedAudioRef.current = pulseStarted && ctx.state === 'running';
     }
 
     return ctx.state === 'running';
-  };
-
-  const unlockAudio = async () => {
-    if (!audioContextRef.current) {
-      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      audioContextRef.current = new AudioContextClass();
-    }
-
-    const ctx = audioContextRef.current;
-    if (ctx.state === 'suspended') {
-      await ctx.resume();
-    }
-
-    // Play silent buffer to unlock iOS audio
-    const buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    source.start(0);
   };
 
   const createBrownNoiseBuffer = (ctx: AudioContext) => {
@@ -85,10 +139,19 @@ export default function App() {
   };
 
   const startTone = async () => {
-    const running = await initAudio();
+    setAudioError(null);
+    const playbackSessionEnabled = configurePlaybackAudioSession();
+    setShowSilentModeHint(isMobile() && !playbackSessionEnabled);
+
+    let running = false;
+    try {
+      running = await ensureAudioReady(true);
+    } catch {
+      running = false;
+    }
     const ctx = audioContextRef.current;
     if (!ctx || !running) {
-      console.warn('AudioContext did not reach running state');
+      setAudioError('Audio is blocked by your browser. Tap Start again and make sure media volume is up.');
       return;
     }
 
@@ -128,6 +191,7 @@ export default function App() {
 
     gainNodeRef.current = gain;
     setIsPlaying(true);
+    setAudioError(null);
 
     if (mode === 'restorative') {
       setTimeLeft(timerDuration);
@@ -155,10 +219,13 @@ export default function App() {
       
       if (oscillatorRef.current) {
         oscillatorRef.current.stop(ctx.currentTime + 0.1);
+        oscillatorRef.current.disconnect();
       }
       if (noiseNodeRef.current) {
         noiseNodeRef.current.stop(ctx.currentTime + 0.1);
+        noiseNodeRef.current.disconnect();
       }
+      gain.disconnect();
     }
     
     oscillatorRef.current = null;
@@ -209,6 +276,7 @@ export default function App() {
       if (oscillatorRef.current) {
         try {
           oscillatorRef.current.stop();
+          oscillatorRef.current.disconnect();
         } catch {
           // Ignore errors if context is already closed
         }
@@ -216,9 +284,13 @@ export default function App() {
       if (noiseNodeRef.current) {
         try {
           noiseNodeRef.current.stop();
+          noiseNodeRef.current.disconnect();
         } catch {
           // Ignore errors if context is already closed
         }
+      }
+      if (gainNodeRef.current) {
+        gainNodeRef.current.disconnect();
       }
     };
   }, []);
@@ -249,25 +321,20 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Mobile audio unlock: first interaction unlocks audio context (required for iOS Safari)
   useEffect(() => {
-    if (!isMobile()) return;
-    
-    const handleFirstInteraction = () => {
-      void unlockAudio();
-      // Remove listeners after first interaction
-      document.removeEventListener('touchstart', handleFirstInteraction);
-      document.removeEventListener('click', handleFirstInteraction);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible' || !isPlaying) return;
+      const ctx = audioContextRef.current;
+      if (!ctx) return;
+      const state = ctx.state as string;
+      if (state === 'suspended' || state === 'interrupted') {
+        void resumeContext(ctx);
+      }
     };
-    
-    document.addEventListener('touchstart', handleFirstInteraction, { passive: true });
-    document.addEventListener('click', handleFirstInteraction);
-    
-    return () => {
-      document.removeEventListener('touchstart', handleFirstInteraction);
-      document.removeEventListener('click', handleFirstInteraction);
-    };
-  }, []);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isPlaying]);
 
   // Reset spin after animation completes
   useEffect(() => {
@@ -286,7 +353,7 @@ export default function App() {
   return (
     <div className={`min-h-screen flex flex-col items-center justify-center p-4 transition-colors duration-300 ${isSpinning ? 'animate-spin-smooth' : ''} ${theme === 'dark' ? 'bg-zinc-950 text-zinc-50 selection:bg-zinc-800' : 'bg-zinc-100 text-zinc-900 selection:bg-zinc-300'}`}>
       <div className="fixed top-0 left-0 right-0 z-40 p-4 sm:px-6 sm:py-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0">
+        <div className="flex flex-row items-center justify-between gap-2">
           <div 
             onClick={() => {
               if (isPlaying) stopTone();
@@ -299,7 +366,7 @@ export default function App() {
             <span className={`font-bold tracking-tight text-xl ${theme === 'dark' ? 'text-zinc-50' : 'text-zinc-900'}`}>hz</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => setShowAbout(true)}
               className={`relative p-2.5 sm:p-2 rounded-full transition-all duration-300 ease-out hover:scale-110 active:scale-95 group ${theme === 'dark' ? 'bg-zinc-800 hover:bg-zinc-700 text-emerald-400' : 'bg-white hover:bg-zinc-100 text-emerald-600 border border-zinc-300'}`}
@@ -320,7 +387,7 @@ export default function App() {
                 if (isPlaying) stopTone();
                 setMode(mode === 'restorative' ? 'brown' : 'restorative');
               }}
-              className={`px-3 py-2.5 sm:px-4 sm:py-2 text-sm font-medium rounded-lg transition-all duration-300 ease-out hover:scale-105 active:scale-95 border ${theme === 'dark' ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700' : 'bg-white hover:bg-zinc-200 text-zinc-700 border-zinc-300'}`}
+              className={`px-2.5 py-2 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-300 ease-out hover:scale-105 active:scale-95 border ${theme === 'dark' ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700' : 'bg-white hover:bg-zinc-200 text-zinc-700 border-zinc-300'}`}
             >
               <span className="sm:hidden">{mode === 'restorative' ? 'Brown' : 'Restorative'}</span>
               <span className="hidden sm:inline">{mode === 'restorative' ? 'Switch to Brown Noise' : 'Switch to Restorative'}</span>
@@ -329,7 +396,7 @@ export default function App() {
         </div>
       </div>
 
-      <Card className={`max-w-md w-full shadow-2xl transition-colors duration-300 ${theme === 'dark' ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-900'}`}>
+      <Card className={`max-w-md w-full mt-16 sm:mt-0 shadow-2xl transition-colors duration-300 ${theme === 'dark' ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-900'}`}>
         <CardHeader className="text-center pb-8">
           <CardTitle className="text-3xl font-medium tracking-tight mb-2">
             {mode === 'restorative' ? 'Restorative Tone' : 'Brown Noise'}
@@ -343,7 +410,7 @@ export default function App() {
           </CardDescription>
         </CardHeader>
         
-        <CardContent className="flex flex-col items-center space-y-10">
+        <CardContent className={`flex flex-col items-center ${mode === 'restorative' ? 'space-y-14 sm:space-y-10' : 'space-y-12 sm:space-y-10'}`}>
           
           <div className="relative flex items-center justify-center gap-4">
             {mode === 'restorative' ? (
@@ -371,7 +438,7 @@ export default function App() {
           </div>
 
           {mode === 'restorative' && (
-            <div className="w-full space-y-4 pt-4">
+            <div className="w-full space-y-12 sm:space-y-4 pt-10 sm:pt-4">
                <div className={`flex justify-between items-center text-sm font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
                  <span>Timer</span>
                  <div className="flex gap-2 items-center">
@@ -391,24 +458,26 @@ export default function App() {
                    ))}
                  </div>
                </div>
-               
-               <div className={`flex justify-between items-center text-sm font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                 <span>Frequency</span>
-                 <span>{frequency} Hz</span>
+
+               <div className="space-y-4">
+                 <div className={`flex justify-between items-center text-sm font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                   <span>Frequency</span>
+                   <span>{frequency} Hz</span>
+                 </div>
+                 <Slider 
+                    value={[frequency]} 
+                    onValueChange={(v: number[]) => setFrequency(v[0])} 
+                    min={20} max={100} step={1} 
+                    className="w-full" 
+                 />
                </div>
-               <Slider 
-                  value={[frequency]} 
-                  onValueChange={(v: number[]) => setFrequency(v[0])} 
-                  min={20} max={100} step={1} 
-                  className="w-full" 
-               />
             </div>
           )}
 
           <Button 
             onClick={() => (isPlaying ? stopTone() : void startTone())}
             size="lg"
-            className={`w-full py-8 text-xl font-medium rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl ${isPlaying ? theme === 'dark' ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-zinc-600 text-zinc-100 hover:bg-zinc-700' : theme === 'dark' ? 'bg-zinc-100 text-zinc-950 hover:bg-white hover:scale-[1.02]' : 'bg-zinc-900 text-zinc-100 hover:bg-black hover:scale-[1.02]'}`}
+            className={`w-full py-6 sm:py-8 text-xl font-medium rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl ${isPlaying ? theme === 'dark' ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-zinc-600 text-zinc-100 hover:bg-zinc-700' : theme === 'dark' ? 'bg-zinc-100 text-zinc-950 hover:bg-white hover:scale-[1.02]' : 'bg-zinc-900 text-zinc-100 hover:bg-black hover:scale-[1.02]'}`}
           >
             {isPlaying ? (
               <>
@@ -420,6 +489,21 @@ export default function App() {
               </>
             )}
           </Button>
+          {audioError && (
+            <p className={`w-full text-sm text-center ${theme === 'dark' ? 'text-amber-300' : 'text-amber-700'}`}>
+              {audioError}
+            </p>
+          )}
+          {showSilentModeHint && (
+            <p className={`w-full text-xs text-center ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+              This iOS version may mute Web Audio in silent mode. Turn silent mode off if playback is muted.
+            </p>
+          )}
+          {mode === 'restorative' && isMobile() && frequency < 70 && (
+            <p className={`w-full text-xs text-center ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+              Very low tones may be hard to hear on phone speakers. For audibility, try 80-100Hz or use headphones.
+            </p>
+          )}
 
         </CardContent>
       </Card>
