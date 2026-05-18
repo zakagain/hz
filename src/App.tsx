@@ -548,7 +548,7 @@ export default function App() {
               </div>
               <div className="pt-4 text-xs opacity-75 space-y-1">
                 <p>Built with React, Tailwind CSS, and the Web Audio API.</p>
-                <p>Made with ❤️ by zak</p>
+                <p>Made with ❤️ by zak (again)</p>
               </div>
             </div>
           </div>
