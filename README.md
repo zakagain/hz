@@ -22,7 +22,7 @@ Features:
 - Light/dark mode toggle (your preference is saved)
 - Works entirely in your browser - no downloads, no accounts
 
-## Run it locally
+## Run it locally, if you must
 
 Option 1: Download ZIP
 1. Download this repo as a ZIP and extract it
