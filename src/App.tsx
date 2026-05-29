@@ -126,15 +126,33 @@ export default function App() {
 
   const createBrownNoiseBuffer = (ctx: AudioContext) => {
     const bufferSize = ctx.sampleRate * 2;
+    const fadeDuration = 0.2; // 200ms crossfade
+    const fadeSize = Math.floor(ctx.sampleRate * fadeDuration);
+
+    // Create a temporary buffer with extra samples for crossfading
+    const temp = new Float32Array(bufferSize + fadeSize);
+    let lastOut = 0;
+    for (let i = 0; i < bufferSize + fadeSize; i++) {
+      const white = Math.random() * 2 - 1;
+      temp[i] = (lastOut + (0.02 * white)) / 1.02;
+      lastOut = temp[i];
+      temp[i] *= 3.5;
+    }
+
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
-    let lastOut = 0;
+
+    // Apply equal-power crossfade at the boundary
     for (let i = 0; i < bufferSize; i++) {
-      const white = Math.random() * 2 - 1;
-      data[i] = (lastOut + (0.02 * white)) / 1.02;
-      lastOut = data[i];
-      data[i] *= 3.5;
+      if (i < fadeSize) {
+        const alpha = i / fadeSize;
+        const angle = alpha * Math.PI / 2;
+        data[i] = temp[bufferSize + i] * Math.cos(angle) + temp[i] * Math.sin(angle);
+      } else {
+        data[i] = temp[i];
+      }
     }
+
     return buffer;
   };
 
